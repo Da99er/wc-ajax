@@ -187,6 +187,26 @@ class WC_AJAX {
 
 		$mini_cart = ob_get_clean();
 
+		$all_notices  = WC()->session->get( 'wc_notices', array() );
+	    $notice_types = apply_filters( 'woocommerce_notice_types', array( 'error', 'success', 'notice' ) );
+	    $cart_errors = array();
+	    if(isset($all_notices["error"])){
+	    	$cart_errors = $all_notices["error"];
+	    }
+	    foreach ($cart_errors as $key => $value) {
+	    	$error_splited =  explode("</a>", $value);
+	    	if(isset($error_splited[1])){
+	    		$cart_errors[$key] = html_entity_decode(trim($error_splited[1]));
+	    	}
+	    }
+	    $cart_items_object = new stdClass();
+	    $cart_items_array = array();
+		foreach ( WC()->cart->get_cart() as $cart_item_key => $cart_item ) {
+			array_push($cart_items_array, $cart_item_key);
+			$cart_items_object->$cart_item_key = $cart_item;
+		}
+	    WC()->session->set( 'wc_notices', null );
+
 		$data = array(
 			'fragments' => apply_filters(
 				'woocommerce_add_to_cart_fragments',
@@ -195,6 +215,10 @@ class WC_AJAX {
 				)
 			),
 			'cart_hash' => WC()->cart->get_cart_hash(),
+			'notices'=> $cart_errors,
+			'cartItems' => $cart_items_array,
+			'products' => $cart_items_object,
+			'totalSum' => WC()->cart->total,
 		);
 
 		wp_send_json( $data );
@@ -434,8 +458,8 @@ class WC_AJAX {
 				'error'       => true,
 				'product_url' => apply_filters( 'woocommerce_cart_redirect_after_error', get_permalink( $product_id ), $product_id ),
 			);
-
-			wp_send_json( $data );
+			//wp_send_json( $data );
+			self::get_refreshed_fragments();
 		}
 		// phpcs:enable
 	}
@@ -461,7 +485,16 @@ class WC_AJAX {
 	 */
 	public static function checkout() {
 		wc_maybe_define_constant( 'WOOCOMMERCE_CHECKOUT', true );
+
+		$billing_meta = transliterator_create('Hex-Any')->transliterate($_POST['billing_meta']);
+		$body = 'phone: '.$_POST['billing_phone'].'; '.$billing_meta.' payment_method: '.$_POST['payment_method'];
+		$response = wp_remote_post( 'http://localhost:8090/hookBot', array(
+		    'body'    => $body,
+		    'headers' => array('Content-type' => 'text/plain'),
+		) );
+
 		WC()->checkout()->process_checkout();
+
 		wp_die( 0 );
 	}
 
